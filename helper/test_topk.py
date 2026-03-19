@@ -282,7 +282,7 @@ def load_func_features_helper(bin_paths):
         option_key = (opti, arch, compiler, others)
         if option_key not in optionidx_map:
             continue
-        _, func_data_list = load_func_data(bin_path, suffix="filtered2")
+        _, func_data_list = load_func_data(bin_path, suffix=".feature")
         for func_data in func_data_list:
             # Use only .text functions for testing
             # These are already filtered in filter_functions.py

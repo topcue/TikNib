@@ -381,7 +381,7 @@ def load_func_features_helper(bin_paths):
     for bin_path in bin_paths:
         package, compiler, arch, opti, bin_name = parse_fname(bin_path)
         others = parse_other_options(bin_path)
-        _, func_data_list = load_func_data(bin_path, suffix="filtered2")
+        _, func_data_list = load_func_data(bin_path, suffix=".feature")
         for func_data in func_data_list:
             # Use only .text functions for testing
             # These are already filtered in filter_functions.py

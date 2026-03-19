@@ -59,7 +59,7 @@ def filter_funcs(bin_path):
             and x['src_line'] in g_oracle[pack_name][bin_name][x['src_file']],
             funcs))
         # TODO: handle suffix correctly.
-        store_func_data(bin_path, funcs, suffix="filtered")
+        store_func_data(bin_path, funcs, suffix=".filtered")
     num_oracle_funcs = len(funcs)
     num_readelf_funcs = 0
 #    if g_oracle:

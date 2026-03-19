@@ -21,7 +21,7 @@ coloredlogs.install(level=logging.INFO)
 def extract_features(bin_name):
     global feature_funcs
     # TODO: handle suffix correctly.
-    bin_name, func_data_list = load_func_data(bin_name, suffix="filtered")
+    bin_name, func_data_list = load_func_data(bin_name, suffix=".filtered")
     fm = FeatureManager()
     for func_data in func_data_list:
         try:
@@ -32,7 +32,7 @@ def extract_features(bin_name):
             print("Error: ", bin_name)
             return
         func_data["feature"] = features
-    store_func_data(bin_name, func_data_list, suffix="filtered2")
+    store_func_data(bin_name, func_data_list, suffix=".feature")
 
 
 if __name__ == "__main__":
