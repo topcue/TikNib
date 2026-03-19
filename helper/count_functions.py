@@ -22,7 +22,7 @@ def plot_data(o_fname, num_funcs, num_bbs):
     import matplotlib.pyplot as plt
     import numpy as np
 
-    plt.style.use('seaborn-white')
+    plt.style.use('seaborn-v0_8-white')
     plt.rcParams['font.size'] = 30
     plt.rcParams['axes.labelsize'] = 30
     plt.rcParams['axes.titlesize'] = 30
