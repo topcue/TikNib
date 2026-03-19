@@ -29,8 +29,8 @@ RE_PATTERN = (
     + "(gcc-[.0-9]+|clang-[.0-9]+|"
     + "clang-obfus-[-a-z2]+|"
     + "gcc|clang)_"
-    + "((?:x86|arm|mips|mipseb|ppc)_(?:32|64))_"
-    + "(O0|O1|O2|O3|Os)_"
+    + "((?:x86|arm|mips|mipseb|ppceb|ppc)_(?:32|64))_"
+    + "(O0|O1|O2|O3|Os|Ofast)_"
     + "(.*)"
 )
 RESTR = re.compile(RE_PATTERN)
@@ -47,7 +47,11 @@ def parse_source_path(src_path):
     if not matches:
         return ""
     src_file = matches.groups()[-1]
-    src_file = src_file[src_file.index("/") + 1 :]
+
+    if "\\" in src_file:
+        src_file = src_file[src_file.index("\\") + 1 :]
+    else:
+        src_file = src_file[src_file.index("/") + 1 :]
     return os.path.relpath(src_file)
 
 
@@ -216,8 +220,12 @@ def get_arch(arch):
     elif arch == "metapc_32_little":
         ret_arch = "x86_32"
     elif arch == "PPC_32_big":
-        ret_arch = "ppc_32"
+        ret_arch = "ppceb_32"
     elif arch == "PPC_64_big":
+        ret_arch = "ppceb_64"
+    #! TODO: Test me
+    # not works! but else statement can handle it.
+    elif arch == "PPC_64_little":
         ret_arch = "ppc_64"
     elif arch in [
         "arm_32",
@@ -228,13 +236,15 @@ def get_arch(arch):
         "mipseb_64",
         "x86_32",
         "x86_64",
-        "ppc_32",
-        "ppc_64",
+        "ppceb_32",
+        "ppceb_64",
+        "ppc_64"
     ]:
         ret_arch = arch
     else:
-        logger.warn("Unknown architecture: %s" % (arch))
-        raise NotImpelemented
+        ret_arch = "ppc_64"
+        # logger.warn("Unknown architecture: %s" % (arch))
+        # raise NotImpelemented
     return ret_arch
 
 
@@ -250,6 +260,18 @@ def timeout_wrapper(func, *args, **kwargs):
         return out
 
 
+import os
+import psutil
+from multiprocessing import Pool, cpu_count
+from functools import partial
+from contextlib import closing
+
+def set_cpu_affinity(pool_size):
+    process = psutil.Process()
+    cpu_cores = list(range(pool_size))
+    process.cpu_affinity(cpu_cores)
+
+
 def do_multiprocess(
     func,
     args,
@@ -259,25 +281,39 @@ def do_multiprocess(
     initializer=None,
     initargs=None,
     timeout=0,
-    threshold=30000,
+    threshold=10,
     force=False,
 ):
+    from tqdm import tqdm
+
     if timeout > 0:
         func = partial(timeout_wrapper, func, timeout=timeout)
     if force or len(args) > threshold:
         if chunk_size == 0:
             chunk_size = len(args) // pool_size + 1
         logger.debug(
-            ("[+] multiprocessing with " "{0} pool and {1} chunk size ...").format(
+            "[+] multiprocessing with {0} pool and {1} chunk size ...".format(
                 pool_size, chunk_size
             )
         )
         if taskset:
-            os.system("taskset -cp 0-%d %s > /dev/null" % (pool_size, os.getpid()))
+            try:
+                set_cpu_affinity(pool_size)
+            except Exception as e:
+                logger.warning(f"Failed to set CPU affinity: {e}")
         with closing(
             Pool(initializer=initializer, initargs=initargs, processes=pool_size)
         ) as pool:
-            data = list(pool.imap_unordered(func, args, chunk_size))
+            #! TODO: Test me
+            # data = list(pool.imap_unordered(func, args, chunk_size))
+            data = list(
+                tqdm(
+                    pool.imap_unordered(func, args, chunk_size),
+                    total=len(args),
+                    desc="IDA",
+                    unit="file",
+                )
+            )
     else:
         logger.debug("[+] no need to do multiprocessing because data is small.")
         data = []
@@ -288,6 +324,7 @@ def do_multiprocess(
                 initializer()
         for idx, arg in enumerate(args):
             data.append(func(arg))
+
     return data
 
 

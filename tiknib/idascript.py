@@ -14,6 +14,14 @@ import coloredlogs
 logger = logging.getLogger(__name__)
 coloredlogs.install(level=logging.INFO, logger=logger)
 
+#! Fix me
+def wsl_to_win_path(p):
+    wsl_prefix = "/home/user/win_workspace"
+    win_prefix = "C:/Users/user/workspace"
+
+    if p == wsl_prefix or p.startswith(wsl_prefix + "/"):
+        return win_prefix + p[len(wsl_prefix):]
+    return p
 
 class IDAScript:
     def __init__(
@@ -82,7 +90,10 @@ class IDAScript:
             os.unlink(tmp_fname)
 
     def run_helper(self, input_fname):
+        # logger.info(f"[DEBUG] input_fname: {input_fname}")
+
         if not os.path.exists(input_fname):
+            logger.error(f"os.path.exists({input_fname}) failed!")
             return input_fname, None
 
         arch = get_file_type(input_fname)
@@ -111,6 +122,9 @@ class IDAScript:
         if not os.path.exists(ida):
             ida = ida.replace("idal", "idat")
 
+        # For Windows IDA Pro
+        ida += ".exe"
+
         # Setup command line arguments
         path = [ida, '-A', '-P+', '-S"{}"'.format(idc_args)]
         if self.log or self.stdout:
@@ -118,8 +132,14 @@ class IDAScript:
             os.close(fd)
             # IDA supports logging by '-L'
             path.append("-L{}".format(tmp_fname))
-        path.append(input_fname)
-        logger.debug(" ".join(path))
+        
+        # path.append(input_fname)
+        tmp_input_fname = wsl_to_win_path(input_fname)
+        path.append(tmp_input_fname)
+
+        # logger.info(f"input_fname: {input_fname}")
+        # logger.info(f"tmp_input_fname: {tmp_input_fname}")
+        # logger.info(f"[DEBUG] cmd: {' '.join(path)}")
 
         ret = run(path, env=self.env, stdout=PIPE).returncode
         if self.log or self.stdout:

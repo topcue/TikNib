@@ -139,9 +139,11 @@ def sanitize(ret_type):
         return "void"
 
     orig = ret_type
-    ret_type = re.sub("_\d*$", "", ret_type)
+    # ret_type = re.sub("_\d*$", "", ret_type)
+    ret_type = re.sub(r"_\d*$", "", ret_type)
     ret_type = re.sub("(typedef|static|const|unsigned|signed)", "", ret_type)
-    ret_type = re.sub("\/\^ *", "", ret_type)
+    # ret_type = re.sub("\/\^ *", "", ret_type)
+    ret_type = re.sub(r"\/\^ *", "", ret_type)
     ret_type = ret_type.strip()
     if not ret_type:
         ret_type = "int"
@@ -189,11 +191,19 @@ def update_type_map(type_map, ctags_fname):
             ret_type = "struct"
         elif kind == "label":
             ret_type = ret_type
+        #! TODO: Test me
         elif kind in ["label", "typedef", "member", "variable"]:
+            # if typeref:
+            #     ret_type = typeref.split(":")[0]
+            # else:
+            #     ret_type = pattern[: pattern.rindex(name)].rstrip()
             if typeref:
                 ret_type = typeref.split(":")[0]
             else:
-                ret_type = pattern[: pattern.rindex(name)].rstrip()
+                try:
+                    ret_type = pattern[: pattern.rindex(name)].rstrip()
+                except ValueError:
+                    ret_type = "int"
         else:
             status = tag.next(entry)
             continue

@@ -7,6 +7,13 @@ from tiknib.idascript import IDAScript
 from tiknib.utils import do_multiprocess
 from config.path_variables import IDA_PATH, IDA_FETCH_FUNCDATA
 
+import logging
+import coloredlogs
+
+logger = logging.getLogger(__name__)
+coloredlogs.install(level=logging.INFO, logger=logger)
+
+
 if __name__ == "__main__":
     op = OptionParser()
     op.add_option(
@@ -60,4 +67,15 @@ if __name__ == "__main__":
         stdout=opts.stdout,
         debug=opts.debug,
     )
+
+    logger.info(f"[DEBUG] idapath   : {idascript.idapath}")
+    logger.info(f"[DEBUG] idc       : {idascript.idc}")
+    logger.info(f"[DEBUG] idcargs   : {idascript.idcargs}")
+    logger.info(f"[DEBUG] force     : {idascript.force}")
+    logger.info(f"[DEBUG] log       : {idascript.log}")
+    logger.info(f"[DEBUG] stdout    : {idascript.stdout}")
+    logger.info(f"[DEBUG] debug     : {idascript.debug}")
+    print()
+    logger.info(f"[DEBUG] input_list: {opts.input_list}")
+
     idascript.run(opts.input_list)

@@ -15,6 +15,11 @@ import ida_pro
 import ida_nalt
 import ida_bytes
 
+#! TODO: Fix me
+import sys
+sys.path.append(r"c:\users\user\appdata\local\programs\python\python312\lib\site-packages")
+import psutil
+
 sys.path.insert(0, ".")
 from tiknib.utils import demangle, get_arch, init_idc, parse_fname, store_func_data
 
@@ -46,8 +51,6 @@ def get_strings(start_addr, end_addr):
             t = idc.get_str_type(ref)
             if isinstance(t, int) and t >= 0:
                 s = idc.get_strlit_contents(ref)
-                if isinstance(s, bytes):
-                    s = s.decode()
                 if s and isprintable(s):
                     strings.append([h, s, t, ref])
     return strings
@@ -143,6 +146,7 @@ def main():
     arch = get_arch(arch)
 
     # Parse option information
+    print(parse_fname(bin_path))
     package, compiler, arch, opti, bin_name = parse_fname(bin_path)
     if "_noinline" in bin_path:
         other_option = "noinline"

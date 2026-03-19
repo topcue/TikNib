@@ -30,6 +30,7 @@ def decode_file_line(dwarfinfo, func_addrs):
                 dir_name = CU.get_top_DIE().attributes["DW_AT_comp_dir"].value
                 path_name = CU.get_top_DIE().attributes["DW_AT_name"].value
                 file_name = os.path.join(dir_name, path_name)
+                file_name = file_name.replace(b'\\', b'/')
             except:
                 pass
 
