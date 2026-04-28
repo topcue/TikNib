@@ -400,3 +400,427 @@ paper](https://ieeexplore.ieee.org/document/9813408) when using BinKit.
   doi={10.1109/TSE.2022.3187689}
 }
 ```
+
+---
+
+# How to use (WIP)
+
+This repository is a local fork of TikNib. The original README above is kept as
+reference. The notes below describe the current layout and replay steps for
+this workspace.
+
+The key difference from upstream TikNib is the execution model:
+
+- upstream TikNib documentation assumes a Linux environment with IDA available
+  in that environment
+- this fork is operated from WSL
+- IDA Pro itself is installed on Windows
+- the WSL-side Python helpers invoke the Windows IDA installation and use a
+  Windows-visible dataset path
+
+## Current local environment
+
+- WSL repo path: `/home/user/TikNib`
+- WSL-visible Windows workspace path: `/home/user/win_workspace`
+- Windows workspace path: `C:/Users/user/workspace`
+- Windows IDA path exposed through WSL: `/home/user/win_workspace/IDA`
+- Dataset root used in local tests: `/home/user/win_workspace/storage/tiknib`
+- Python environment used in local tests: `venv/`
+- Tested IDA script in this fork: `tiknib/ida/fetch_funcdata_v7.5.py`
+
+The important relationship here is that:
+
+- `/home/user/win_workspace` is a symlink to `/mnt/c/Users/user/workspace`
+- that same location is seen by Windows as `C:/Users/user/workspace`
+
+In other words, the helpers in WSL and IDA Pro on Windows are operating on the
+same underlying files through two different path syntaxes.
+
+This is one of the core requirements for the current implementation. The code
+assumes the following mapping:
+
+- WSL prefix: `/home/user/win_workspace`
+- Windows prefix: `C:/Users/user/workspace`
+
+That mapping is used in two places:
+
+- `tiknib/idascript.py`: converts WSL dataset paths into Windows paths before
+  invoking IDA Pro
+- `script/handle_pickle.py`: converts Windows paths embedded in pickle files
+  back into WSL-visible paths when needed
+
+This fork currently assumes a mixed WSL/Windows layout:
+
+- The repository is opened from WSL.
+- IDA Pro is installed on Windows and is invoked from WSL.
+- The binaries analyzed by IDA must live on a Windows-visible path.
+- Test datasets are stored under `/home/user/win_workspace/storage/...`.
+
+## Current replay inputs
+
+Example replay inputs live under `example/`.
+
+- `example/test1/`
+- `example/test2/`
+
+Each example directory contains:
+
+- `list.txt`: absolute binary paths, one per line
+- `sources.txt`: absolute source root paths, one per line
+
+## File and directory conventions
+
+### 1. Binary naming
+
+TikNib parses binary metadata from the filename. The local examples follow:
+
+`<package>_<compiler>_<arch>_<bits>_<opti>_<binary>.elf`
+
+Examples:
+
+- `coreutils_clang-18.1.8_x86_64_O0_cat.elf`
+- `openssl_gcc-14.2.0_x86_64_O0_openssl.elf`
+
+If the filename format does not match this pattern, helpers such as
+`parse_fname()` and downstream grouping logic will fail or misclassify data.
+
+### 2. Dataset directory layout
+
+The local replay datasets are grouped by test set name under:
+
+- `/home/user/win_workspace/storage/tiknib/test1`
+- `/home/user/win_workspace/storage/tiknib/test2`
+
+Each test set contains one or more package subdirectories, such as:
+
+- `coreutils/`
+- `openssl/`
+
+Each package directory is expected to contain at least:
+
+- the original `.elf`
+- `<name>.elf.done`
+- `<name>.elf.output`
+- `<name>.elf.pickle`
+
+Later steps generate:
+
+- `<name>.elf.filtered.pickle`
+- `<name>.elf.feature.pickle`
+
+### 3. Path handling
+
+The local helper `script/handle_pickle.py` validates a dataset directory and can
+rewrite Windows-style paths inside `.elf.pickle` files into WSL paths.
+
+In the current local replay runs, the `.pickle` files produced by Windows IDA
+did contain Windows paths and were rewritten to WSL paths before the later
+stages.
+
+## Pipeline used in this fork
+
+The local replay order is:
+
+1. `helper/do_idascript.py`
+2. `script/handle_pickle.py`
+3. `helper/extract_lineno.py`
+4. `helper/filter_functions.py`
+5. `helper/extract_functype.py`
+6. `helper/extract_features.py`
+
+### Step 1 notes
+
+`do_idascript.py` writes files next to the target ELF, so the dataset
+directory must be writable.
+
+This fork does not use a Linux-native IDA installation. The expected setup is:
+
+- WSL runs the helper scripts
+- Windows runs IDA Pro
+- the dataset is accessed through a path that both sides agree on
+
+When IDA is involved, this fork relies on paths that are visible from the
+Windows side. In past successful runs, IDA loaded files from:
+
+- `C:\Users\user\workspace\storage\tiknib\...`
+
+If a new dataset is prepared, matching that path convention is the safest
+option.
+
+## Replay script
+
+The local replay helper is:
+
+- `script/test.sh`
+
+It accepts a test set name and runs the full local replay pipeline up to
+feature extraction:
+
+```bash
+bash script/test.sh test1
+bash script/test.sh test2
+```
+
+By default, running it without arguments uses `test1`.
+
+What the script does:
+
+1. checks that the selected input files and dataset directory exist
+2. checks that the current WSL session can launch Windows executables
+3. removes previous generated files only for the selected test set
+4. runs `do_idascript.py`
+5. runs `handle_pickle.py --yes`
+6. runs `extract_lineno.py`
+7. runs `filter_functions.py`
+8. runs `extract_functype.py`
+9. runs `extract_features.py`
+
+Operational notes:
+
+- only one `script/test.sh` run is allowed at a time
+- the script is intended for a Windows-launched WSL terminal
+- an SSH-created WSL shell may not have working Windows interop even on the
+  same machine
+
+Verified local runs:
+
+- `2026-04-28`: `bash script/test.sh test1` completed successfully
+- `2026-04-28`: `bash script/test.sh test2` completed successfully
+- both runs finished through `extract_features.py`
+- both runs produced `220` `.feature.pickle` files
+
+## Step-by-step replay
+
+If you do not want to run the whole helper script at once, replay `test1` or
+`test2` step by step.
+
+The examples below use `test1`. Replace `test1` with `test2` if needed.
+
+### Step 0: Check the inputs
+
+Confirm that these files exist:
+
+- `example/test1/list.txt`
+- `example/test1/sources.txt`
+- `/home/user/win_workspace/storage/tiknib/test1`
+
+`list.txt` is the list of target binaries. `sources.txt` is the list of source
+roots used later by `ctags`.
+
+### Step 1: Run IDA and create base pickle files
+
+```bash
+python helper/do_idascript.py \
+  --idapath "/home/user/win_workspace/IDA" \
+  --idc "tiknib/ida/fetch_funcdata_v7.5.py" \
+  --input_list "example/test1/list.txt"
+```
+
+What this step reads:
+
+- `example/test1/list.txt`
+- each `.elf` listed in that file
+
+What this step writes next to each ELF:
+
+- `<name>.elf.done`
+- `<name>.elf.output`
+- `<name>.elf.pickle`
+
+Purpose:
+
+- run IDA
+- collect function-level raw data
+- save the initial function list in pickle form
+
+This is the most environment-sensitive step in this fork because it crosses the
+WSL/Windows boundary.
+
+Things to verify after step 1:
+
+- `.done` exists
+- `.output` exists
+- `.pickle` exists
+
+If this step fails, check:
+
+- whether the dataset directory is writable
+- whether the ELF path is visible from the Windows side
+- whether the Windows IDA installation path is correct
+- whether the IDA script path matches the local setup
+- whether `echo $WSL_INTEROP` is non-empty
+- whether `cmd.exe /c echo ok` works in the current shell
+- the corresponding `.output` log
+
+### Step 2: Normalize paths inside pickle files if needed
+
+```bash
+python script/handle_pickle.py /home/user/win_workspace/storage/tiknib/test1
+```
+
+Purpose:
+
+- validate the dataset directory layout
+- scan `.elf.pickle` files for embedded Windows paths
+- optionally rewrite them to WSL paths
+
+What this step reads:
+
+- all `.elf.pickle` files under `/home/user/win_workspace/storage/tiknib/test1`
+
+What this step may modify:
+
+- the same `.elf.pickle` files, but only if path replacement is needed
+
+In the current local replay runs, this step rewrote Windows paths in all
+generated `.elf.pickle` files.
+
+If you want the same non-interactive behavior used by `script/test.sh`, run:
+
+```bash
+python script/handle_pickle.py --yes /home/user/win_workspace/storage/tiknib/test1
+```
+
+### Step 3: Add source file and line number information
+
+```bash
+python helper/extract_lineno.py \
+  --input_list "example/test1/list.txt" \
+  --threshold 1000
+```
+
+Purpose:
+
+- read debug information from each binary
+- map function addresses to source path and line number
+- update the base `.pickle`
+
+What this step reads:
+
+- `example/test1/list.txt`
+- each `<name>.elf.pickle`
+- debug information from the ELF
+
+What this step writes:
+
+- updated `<name>.elf.pickle`
+
+Fields added or updated in function records:
+
+- `src_path`
+- `src_file`
+- `src_line`
+
+### Step 4: Filter functions and build the local oracle
+
+```bash
+python helper/filter_functions.py \
+  --input_list "example/test1/list.txt" \
+  --threshold 1
+```
+
+Purpose:
+
+- keep only `.text` functions
+- drop entries without source mapping
+- drop functions outside the package source path
+- drop `sub_...` names
+- build a per-package oracle to keep unique source locations
+
+What this step reads:
+
+- `example/test1/list.txt`
+- each updated `<name>.elf.pickle`
+
+What this step writes:
+
+- `<name>.elf.filtered.pickle`
+
+Terminal output from this step is useful. It prints per-package counts in this
+order:
+
+- original functions
+- `.text` functions
+- functions with source info
+- functions whose source path matches the package
+- functions after removing `sub_...`
+- functions after oracle filtering
+- readelf-based count placeholder
+
+### Step 5: Build ctags and add abstracted type information
+
+```bash
+python helper/extract_functype.py \
+  --input_list "example/test1/list.txt" \
+  --source_list "example/test1/sources.txt" \
+  --ctags_dir "data/test1" \
+  --threshold 1
+```
+
+Purpose:
+
+- run `ctags` on the source roots
+- build a type map
+- enrich each filtered function with abstract argument and return types
+
+What this step reads:
+
+- `example/test1/list.txt`
+- `example/test1/sources.txt`
+- each `<name>.elf.filtered.pickle`
+
+What this step writes:
+
+- `data/test1/*.tags`
+- updated `<name>.elf.filtered.pickle`
+
+Fields added in function records:
+
+- `abstract_args_type`
+- `abstract_ret_type`
+
+Expected tag files:
+
+- `data/test1/coreutils.tags`
+- `data/test1/openssl.tags`
+- `data/test1/include.tags`
+
+### Step 6: Extract numeric features
+
+```bash
+python helper/extract_features.py \
+  --input_list "example/test1/list.txt" \
+  --threshold 1
+```
+
+Purpose:
+
+- load each `.filtered.pickle`
+- compute ASM, CFG, CG, data, and type-related features
+- store them in a separate feature pickle
+
+What this step reads:
+
+- `example/test1/list.txt`
+- each `<name>.elf.filtered.pickle`
+
+What this step writes:
+
+- `<name>.elf.feature.pickle`
+
+Field added in function records:
+
+- `feature`
+
+### Step 7: Optional evaluation
+
+The local replay notes above stop at feature extraction. If you want to proceed
+to model evaluation, use `helper/test_roc.py` with one of the YAML files in
+`config/`.
+
+## Cleanup notes
+
+- `script/cleanup_tiknib_test.py test1` removes generated files only from
+  `test1` while keeping the original `.elf`
+- `script/cleanup_tiknib_test.py test2` does the same for `test2`
+- running it without an argument cleans both `test1` and `test2`

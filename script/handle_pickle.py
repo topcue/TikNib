@@ -257,11 +257,18 @@ def ask_yes_no(prompt):
 
 
 def main():
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <BASE_PATH>")
+    args = sys.argv[1:]
+    auto_yes = False
+
+    if "--yes" in args:
+        auto_yes = True
+        args.remove("--yes")
+
+    if len(args) != 1:
+        print(f"Usage: {sys.argv[0]} [--yes] <BASE_PATH>")
         sys.exit(1)
 
-    base_path = os.path.abspath(os.path.expanduser(sys.argv[1]))
+    base_path = os.path.abspath(os.path.expanduser(args[0]))
 
     print(f"\n[Validate] BASE_PATH = {base_path}")
     ok, errors = validate_base_path(base_path)
@@ -292,7 +299,11 @@ def main():
         f"{total_matches} total matches."
     )
 
-    do_replace = ask_yes_no("\nDo you want to replace and save them? [y/n]: ")
+    if auto_yes:
+        do_replace = True
+        print("\nAuto-confirm enabled: replacing detected Windows paths.")
+    else:
+        do_replace = ask_yes_no("\nDo you want to replace and save them? [y/n]: ")
     if not do_replace:
         print("Replacement cancelled.")
         sys.exit(0)

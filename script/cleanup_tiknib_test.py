@@ -1,4 +1,5 @@
 import os
+import sys
 
 BASE_DIR = "/home/user/win_workspace/storage/tiknib"
 TARGET_SETS = ["test1", "test2"]
@@ -28,10 +29,22 @@ def cleanup_test_dir(test_dir):
 
 
 def main():
+    if len(sys.argv) > 2:
+        print("Usage: python script/cleanup_tiknib_test.py [test1|test2]")
+        sys.exit(1)
+
+    if len(sys.argv) == 2:
+        target_sets = [sys.argv[1]]
+        if target_sets[0] not in TARGET_SETS:
+            print(f"Unsupported test set: {target_sets[0]}")
+            sys.exit(1)
+    else:
+        target_sets = TARGET_SETS
+
     total_kept = 0
     total_removed = 0
 
-    for test_name in TARGET_SETS:
+    for test_name in target_sets:
         test_path = os.path.join(BASE_DIR, test_name)
 
         if not os.path.isdir(test_path):
@@ -54,4 +67,3 @@ if __name__ == "__main__":
     main()
 
 # EOF
-
