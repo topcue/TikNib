@@ -74,6 +74,10 @@ def init_mapping(arch):
         if arch == "ppc_32":
             md = Cs(CS_ARCH_PPC, CS_MODE_32 + CS_MODE_BIG_ENDIAN)
         elif arch == "ppc_64":
+            md = Cs(CS_ARCH_PPC, CS_MODE_64 + CS_MODE_LITTLE_ENDIAN)
+        elif arch == "ppceb_32":
+            md = Cs(CS_ARCH_PPC, CS_MODE_32 + CS_MODE_BIG_ENDIAN)
+        elif arch == "ppceb_64":
             md = Cs(CS_ARCH_PPC, CS_MODE_64 + CS_MODE_BIG_ENDIAN)
         inst_map = PPC_INST_MAP
 
