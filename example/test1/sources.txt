@@ -1,2 +1,2 @@
-/home/user/TikNib/sources/test/coreutils
-/home/user/TikNib/sources/test/openssl
+sources/test/coreutils
+sources/test/openssl

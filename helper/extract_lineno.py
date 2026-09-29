@@ -8,8 +8,6 @@ from tiknib.debug.lineno import fetch_lineno
 from tiknib.utils import do_multiprocess
 from tiknib.utils import load_func_data, store_func_data
 from tiknib.utils import parse_source_path
-from config.path_variables import IDA_PATH, IDA_FETCH_FUNCDATA
-
 import logging
 import coloredlogs
 
@@ -64,9 +62,18 @@ if __name__ == "__main__":
         help="number of binaries to process in each process",
     )
     op.add_option("--force", action="store_true", dest="force")
+    op.add_option(
+        "--failed_list",
+        type="str",
+        action="store",
+        dest="failed_list",
+        default="failed_bins.txt",
+        help="write failures here and exit non-zero (default: failed_bins.txt)",
+    )
     (opts, args) = op.parse_args()
 
-    assert opts.input_list
+    if not opts.input_list or not os.path.isfile(opts.input_list):
+        op.error("--input_list must name an existing file")
 
     with open(opts.input_list, "r") as f:
         bins = f.read().splitlines()
@@ -82,21 +89,11 @@ if __name__ == "__main__":
     if failed_bins:
         print("{} bins failed.".format(len(failed_bins)))
 
-        with open("failed_bins.txt", "w") as f:
+        with open(opts.failed_list, "w") as f:
             for b in failed_bins:
                 f.write(b + "\n")
-
-        from tiknib.idascript import IDAScript
-        idascript = IDAScript(
-            idapath=IDA_PATH,
-            idc=IDA_FETCH_FUNCDATA,
-            force=True,
-            log=True,
-        )
-        idascript.run("failed_bins.txt")
-
-        logger.info("Re-Processing %d binaries ...", len(failed_bins))
-        do_multiprocess(
-            extract_func_lineno, failed_bins, chunk_size=opts.chunk_size, threshold=opts.threshold
-        )
-        logger.info("done. (%0.3fs)", (time.time() - t0))
+        logger.error("Failure list written to %s", opts.failed_list)
+        sys.exit(1)
+    elif opts.failed_list:
+        with open(opts.failed_list, "w"):
+            pass

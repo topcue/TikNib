@@ -1,0 +1,28 @@
+[ida]
+# WSL path to the Windows IDA installation. This path must contain idat.exe
+# and idat64.exe and must be executable through WSL interop.
+install_path = /mnt/c/Users/YOUR_WINDOWS_USER/path/to/IDA
+
+# Windows path to the TikNib IDAPython extraction script. IDA, rather than
+# WSL Python, opens this file.
+script_path = C:/Users/YOUR_WINDOWS_USER/path/to/IDA/tiknib/ida/fetch_funcdata_v7.5.py
+
+# Optional but strongly recommended when an IDA installation is shared by
+# several research artifacts. The preflight check compares this value with
+# HKCU\Software\Hex-Rays\IDA\Python3TargetDLL.
+python_dll = C:/Users/YOUR_WINDOWS_USER/path/to/IDA-python/tiknib/python38.dll
+
+pool_size = 1
+
+[paths]
+# The two prefixes must describe the same directory as seen from WSL and
+# Windows. Binaries analyzed by Windows IDA must be stored below this root.
+wsl_prefix = /mnt/c/Users/YOUR_WINDOWS_USER/path/to/workspace
+windows_prefix = C:/Users/YOUR_WINDOWS_USER/path/to/workspace
+
+# Optional legacy dataset root used by some evaluation helpers.
+dataset_root =
+
+[windows]
+cmd_exe = /mnt/c/Windows/System32/cmd.exe
+reg_exe = /mnt/c/Windows/System32/reg.exe

@@ -7,3 +7,8 @@
 */*/*.pyc
 venv
 sources
+
+# Machine-local paths and IDA installation details. Copy the tracked example
+# to this filename and keep credentials, licenses, and workstation paths out
+# of the repository.
+/config/local.ini

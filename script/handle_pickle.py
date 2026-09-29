@@ -3,10 +3,10 @@ import os
 import re
 import sys
 
-# --- Configuration ---
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-WSL_PREFIX = "/home/user/win_workspace"
-WIN_PREFIX = "C:/Users/user/workspace"
+from config.path_variables import WIN_PREFIX, WSL_PREFIX, windows_to_wsl_path
+
 WINDOWS_ABS_PATH = re.compile(r"^[a-zA-Z]:[\\\\/]")
 
 
@@ -14,10 +14,7 @@ def win_to_wsl_path(p):
     """
     Standardize backslashes and replace Windows prefix with WSL prefix.
     """
-    p_norm = p.replace("\\", "/")
-    if p_norm == WIN_PREFIX or p_norm.startswith(WIN_PREFIX + "/"):
-        return WSL_PREFIX + p_norm[len(WIN_PREFIX):]
-    return p_norm
+    return windows_to_wsl_path(p, WSL_PREFIX, WIN_PREFIX)
 
 
 def process_recursive(data, replace_flag=False):
@@ -54,7 +51,11 @@ def process_recursive(data, replace_flag=False):
 
 def get_immediate_subdirs(base_path):
     entries = [os.path.join(base_path, name) for name in os.listdir(base_path)]
-    subdirs = [p for p in entries if os.path.isdir(p)]
+    subdirs = [
+        p
+        for p in entries
+        if os.path.isdir(p) and os.path.basename(p) != "_control"
+    ]
     nondirs = [p for p in entries if not os.path.isdir(p)]
     return sorted(subdirs), sorted(nondirs)
 
@@ -184,7 +185,7 @@ def save_pickle_file(path, data):
         pickle.dump(data, f)
 
 
-def scan_paths(target_paths):
+def scan_paths(target_paths, verbose=True):
     """
     Search mode only. Do not modify files.
     Returns:
@@ -195,7 +196,8 @@ def scan_paths(target_paths):
     total_matches = 0
 
     for target_path in target_paths:
-        print(f"\n[Target] {target_path}")
+        if verbose:
+            print(f"\n[Target] {target_path}")
 
         try:
             data = load_pickle_file(target_path)
@@ -210,24 +212,26 @@ def scan_paths(target_paths):
             total_matches += len(found)
             files_with_matches.append(target_path)
 
-            print(f"Found {len(found)} Windows paths ({len(unique_found)} unique).")
-            for p in unique_found:
-                print(f"  - Detected: {p}")
-                print(f"    -> Would be: {win_to_wsl_path(p)}")
-        else:
+            if verbose:
+                print(f"Found {len(found)} Windows paths ({len(unique_found)} unique).")
+                for p in unique_found:
+                    print(f"  - Detected: {p}")
+                    print(f"    -> Would be: {win_to_wsl_path(p)}")
+        elif verbose:
             print("No Windows paths detected.")
 
     return files_with_matches, total_matches
 
 
-def replace_paths(target_paths):
+def replace_paths(target_paths, verbose=True):
     """
     Replace mode. Actually modify and save files.
     """
     updated_files = 0
 
     for target_path in target_paths:
-        print(f"\n[Replace Target] {target_path}")
+        if verbose:
+            print(f"\n[Replace Target] {target_path}")
 
         try:
             data = load_pickle_file(target_path)
@@ -241,10 +245,11 @@ def replace_paths(target_paths):
             try:
                 save_pickle_file(target_path, updated_data)
                 updated_files += 1
-                print(f"Successfully updated and saved: {target_path}")
+                if verbose:
+                    print(f"Successfully updated and saved: {target_path}")
             except Exception as e:
                 print(f"Failed to save {target_path}: {e}")
-        else:
+        elif verbose:
             print("No Windows paths detected. Skipped.")
 
     return updated_files
@@ -263,13 +268,18 @@ def ask_yes_no(prompt):
 def main():
     args = sys.argv[1:]
     auto_yes = False
+    quiet = False
 
     if "--yes" in args:
         auto_yes = True
         args.remove("--yes")
 
+    if "--quiet" in args:
+        quiet = True
+        args.remove("--quiet")
+
     if len(args) != 1:
-        print(f"Usage: {sys.argv[0]} [--yes] <BASE_PATH>")
+        print(f"Usage: {sys.argv[0]} [--yes] [--quiet] <BASE_PATH>")
         sys.exit(1)
 
     base_path = os.path.abspath(os.path.expanduser(args[0]))
@@ -292,7 +302,7 @@ def main():
     print(f"\nFound {len(target_paths)} '.elf.pickle' files.")
 
     print("\n=== Search mode (no modification) ===")
-    files_with_matches, total_matches = scan_paths(target_paths)
+    files_with_matches, total_matches = scan_paths(target_paths, verbose=not quiet)
 
     if not files_with_matches:
         print("\nNo Windows-style paths were found in any pickle file.")
@@ -313,7 +323,7 @@ def main():
         sys.exit(0)
 
     print("\n=== Replace mode (modification enabled) ===")
-    updated_files = replace_paths(files_with_matches)
+    updated_files = replace_paths(files_with_matches, verbose=not quiet)
     print(f"\nDone. Updated {updated_files} file(s).")
 
 

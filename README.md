@@ -403,11 +403,53 @@ paper](https://ieeexplore.ieee.org/document/9813408) when using BinKit.
 
 ---
 
-# How to use (WIP)
+# WSL/Windows reproduction workflow
 
-This repository is a local fork of TikNib. The original README above is kept as
-reference. The notes below describe the current layout and replay steps for
-this workspace.
+This repository is a personal fork of TikNib. The original README above is
+kept as reference. The notes below describe the configurable WSL/Windows
+workflow used by this fork.
+
+## Local configuration boundary
+
+TikNib is intended to remain usable as a standalone reproduction repository
+and as a submodule of another experiment. Workstation paths, the IDA install,
+licenses, datasets, and generated artifacts therefore do not belong in Git.
+
+Create the ignored local configuration before running IDA:
+
+```bash
+cp config/local.ini.example config/local.ini
+```
+
+Edit `config/local.ini` for the workstation. It contains:
+
+- the WSL-visible path to the Windows IDA installation
+- the Windows path to TikNib's IDA extraction script
+- the expected IDAPython `python38.dll`
+- the WSL and Windows prefixes for the shared workspace
+- the default IDA worker count
+
+Environment variables such as `TIKNIB_IDA_PATH`, `TIKNIB_IDA_SCRIPT`,
+`TIKNIB_IDA_PYTHON_DLL`, `TIKNIB_WSL_PREFIX`, and
+`TIKNIB_WINDOWS_PREFIX` can override the file for CI or a parent experiment.
+The full repository boundary and the contract for parent experiments are
+documented in [`docs/repository_scope.md`](docs/repository_scope.md).
+
+Validate the configuration without changing IDA or the registry:
+
+```bash
+venv/bin/python script/check_ida_environment.py
+```
+
+The IDAPython runtime selection is global to a Windows IDA installation. When
+that installation is shared with another research artifact, set
+`ida.python_dll` and run the check above before TikNib. Do not switch the IDA
+Python runtime while a TikNib batch is running: worker processes start new IDA
+instances throughout the batch and would otherwise use mixed environments.
+
+TikNib checks the selected runtime but does not install it, switch it, manage
+other artifacts, or manage a proprietary IDA license service. Those remain
+external machine administration concerns.
 
 The key difference from upstream TikNib is the execution model:
 
@@ -418,31 +460,9 @@ The key difference from upstream TikNib is the execution model:
 - the WSL-side Python helpers invoke the Windows IDA installation and use a
   Windows-visible dataset path
 
-## Current local environment
-
-- WSL repo path: `/home/user/TikNib`
-- WSL-visible Windows workspace path: `/home/user/win_workspace`
-- Windows workspace path: `C:/Users/user/workspace`
-- Windows IDA path exposed through WSL: `/home/user/win_workspace/IDA`
-- Dataset root used in local tests: `/home/user/win_workspace/storage/tiknib`
-- Python environment used in local tests: `venv/`
-- Tested IDA script in this fork: `tiknib/ida/fetch_funcdata_v7.5.py`
-
-The important relationship here is that:
-
-- `/home/user/win_workspace` is a symlink to `/mnt/c/Users/user/workspace`
-- that same location is seen by Windows as `C:/Users/user/workspace`
-
-In other words, the helpers in WSL and IDA Pro on Windows are operating on the
-same underlying files through two different path syntaxes.
-
-This is one of the core requirements for the current implementation. The code
-assumes the following mapping:
-
-- WSL prefix: `/home/user/win_workspace`
-- Windows prefix: `C:/Users/user/workspace`
-
-That mapping is used in two places:
+The WSL and Windows prefixes in `config/local.ini` must identify the same
+underlying directory through their respective path syntaxes. The mapping is
+used in two places:
 
 - `tiknib/idascript.py`: converts WSL dataset paths into Windows paths before
   invoking IDA Pro
@@ -454,7 +474,7 @@ This fork currently assumes a mixed WSL/Windows layout:
 - The repository is opened from WSL.
 - IDA Pro is installed on Windows and is invoked from WSL.
 - The binaries analyzed by IDA must live on a Windows-visible path.
-- Test datasets are stored under `/home/user/win_workspace/storage/...`.
+- Test datasets are stored below the configured shared workspace.
 
 ## Current replay inputs
 
@@ -465,8 +485,12 @@ Example replay inputs live under `example/`.
 
 Each example directory contains:
 
-- `list.txt`: absolute binary paths, one per line
-- `sources.txt`: absolute source root paths, one per line
+- `list.txt`: binary paths relative to a local dataset root, one per line
+- `sources.txt`: source roots relative to the repository, one per line
+
+Tracked lists are portable manifests, not executable run controls. Use
+`script/materialize_path_list.py` to resolve a manifest against a local root;
+write its absolute-path output below ignored `data/` or in a parent project.
 
 ## File and directory conventions
 
@@ -486,10 +510,9 @@ If the filename format does not match this pattern, helpers such as
 
 ### 2. Dataset directory layout
 
-The local replay datasets are grouped by test set name under:
-
-- `/home/user/win_workspace/storage/tiknib/test1`
-- `/home/user/win_workspace/storage/tiknib/test2`
+The local replay datasets are grouped by test set name below the configured
+shared workspace. Set `TIKNIB_TEST_DATASET_DIR` to override the derived path
+used by `script/test.sh`.
 
 Each test set contains one or more package subdirectories, such as:
 
@@ -513,9 +536,8 @@ Later steps generate:
 The local helper `script/handle_pickle.py` validates a dataset directory and can
 rewrite Windows-style paths inside `.elf.pickle` files into WSL paths.
 
-In the current local replay runs, the `.pickle` files produced by Windows IDA
-did contain Windows paths and were rewritten to WSL paths before the later
-stages.
+When `.pickle` files produced by Windows IDA contain Windows paths, run this
+normalization before the later stages.
 
 ## Pipeline used in this fork
 
@@ -539,13 +561,8 @@ This fork does not use a Linux-native IDA installation. The expected setup is:
 - Windows runs IDA Pro
 - the dataset is accessed through a path that both sides agree on
 
-When IDA is involved, this fork relies on paths that are visible from the
-Windows side. In past successful runs, IDA loaded files from:
-
-- `C:\Users\user\workspace\storage\tiknib\...`
-
-If a new dataset is prepared, matching that path convention is the safest
-option.
+When IDA is involved, this fork relies on paths that are below the configured
+WSL/Windows shared prefixes. A new dataset should follow that convention.
 
 ## Replay script
 
@@ -568,12 +585,14 @@ What the script does:
 1. checks that the selected input files and dataset directory exist
 2. checks that the current WSL session can launch Windows executables
 3. removes previous generated files only for the selected test set
-4. runs `do_idascript.py`
-5. runs `handle_pickle.py --yes`
-6. runs `extract_lineno.py`
-7. runs `filter_functions.py`
-8. runs `extract_functype.py`
-9. runs `extract_features.py`
+4. runs `do_idascript.py` with logging and a one-input preflight
+5. validates the raw IDA sidecars
+6. runs `handle_pickle.py --yes`
+7. runs `extract_lineno.py`
+8. runs `filter_functions.py`
+9. runs `extract_functype.py`
+10. runs `extract_features.py`
+11. validates the output after every TikNib stage
 
 Operational notes:
 
@@ -581,13 +600,6 @@ Operational notes:
 - the script is intended for a Windows-launched WSL terminal
 - an SSH-created WSL shell may not have working Windows interop even on the
   same machine
-
-Verified local runs:
-
-- `2026-04-28`: `bash script/test.sh test1` completed successfully
-- `2026-04-28`: `bash script/test.sh test2` completed successfully
-- both runs finished through `extract_features.py`
-- both runs produced `220` `.feature.pickle` files
 
 ## Step-by-step replay
 
@@ -602,23 +614,37 @@ Confirm that these files exist:
 
 - `example/test1/list.txt`
 - `example/test1/sources.txt`
-- `/home/user/win_workspace/storage/tiknib/test1`
+- the dataset directory selected by `TIKNIB_TEST_DATASET_DIR` or the configured
+  workspace prefix
 
-`list.txt` is the list of target binaries. `sources.txt` is the list of source
-roots used later by `ctags`.
+`list.txt` is the portable manifest of target binaries. `sources.txt` is the
+list of source roots used later by `ctags`.
+
+Resolve the manifest and create an ignored location for retry lists used in
+the commands below. Set `DATASET_DIR` to the local `test1` dataset first:
+
+```bash
+mkdir -p data/test1/failures
+INPUT_LIST="data/test1/list.txt"
+python script/materialize_path_list.py \
+  --manifest "example/test1/list.txt" \
+  --root "$DATASET_DIR" \
+  --output "$INPUT_LIST"
+```
 
 ### Step 1: Run IDA and create base pickle files
 
 ```bash
 python helper/do_idascript.py \
-  --idapath "/home/user/win_workspace/IDA" \
-  --idc "tiknib/ida/fetch_funcdata_v7.5.py" \
-  --input_list "example/test1/list.txt"
+  --preflight \
+  --log \
+  --failed_list "data/test1/failures/ida.txt" \
+  --input_list "$INPUT_LIST"
 ```
 
 What this step reads:
 
-- `example/test1/list.txt`
+- `$INPUT_LIST`
 - each `.elf` listed in that file
 
 What this step writes next to each ELF:
@@ -644,6 +670,10 @@ Things to verify after step 1:
 
 If this step fails, check:
 
+- whether `config/local.ini` exists and the read-only environment check passes
+- whether the IDAPython runtime still matches `ida.python_dll`
+- whether the external IDA license service is running, if the installation
+  uses one
 - whether the dataset directory is writable
 - whether the ELF path is visible from the Windows side
 - whether the Windows IDA installation path is correct
@@ -652,10 +682,28 @@ If this step fails, check:
 - whether `cmd.exe /c echo ok` works in the current shell
 - the corresponding `.output` log
 
+`do_idascript.py` always performs the read-only configuration checks.
+`--preflight` additionally analyzes one pending input synchronously before
+starting the worker pool. This catches a missing license service or broken IDA
+script without producing a whole batch of failed logs.
+
+Validate the raw outputs and write a retry list:
+
+```bash
+python script/validate_ida_outputs.py \
+  --input_list "$INPUT_LIST" \
+  --failed_list "data/test1/failures/ida_validation.txt"
+```
+
+The IDA validator checks sidecar presence, pickle readability, basic function
+fields, decoded strings, and the aggregation of strings and constants from
+basic blocks. The `.output` log is required by default; use
+`--allow-missing-log` only for a run intentionally made without `--log`.
+
 ### Step 2: Normalize paths inside pickle files if needed
 
 ```bash
-python script/handle_pickle.py /home/user/win_workspace/storage/tiknib/test1
+python script/handle_pickle.py "$DATASET_DIR"
 ```
 
 Purpose:
@@ -666,7 +714,7 @@ Purpose:
 
 What this step reads:
 
-- all `.elf.pickle` files under `/home/user/win_workspace/storage/tiknib/test1`
+- all `.elf.pickle` files under the selected dataset directory
 
 What this step may modify:
 
@@ -678,14 +726,15 @@ generated `.elf.pickle` files.
 If you want the same non-interactive behavior used by `script/test.sh`, run:
 
 ```bash
-python script/handle_pickle.py --yes /home/user/win_workspace/storage/tiknib/test1
+python script/handle_pickle.py --yes "$DATASET_DIR"
 ```
 
 ### Step 3: Add source file and line number information
 
 ```bash
 python helper/extract_lineno.py \
-  --input_list "example/test1/list.txt" \
+  --input_list "$INPUT_LIST" \
+  --failed_list "data/test1/failures/lineno_extraction.txt" \
   --threshold 1000
 ```
 
@@ -697,7 +746,7 @@ Purpose:
 
 What this step reads:
 
-- `example/test1/list.txt`
+- `$INPUT_LIST`
 - each `<name>.elf.pickle`
 - debug information from the ELF
 
@@ -715,7 +764,7 @@ Fields added or updated in function records:
 
 ```bash
 python helper/filter_functions.py \
-  --input_list "example/test1/list.txt" \
+  --input_list "$INPUT_LIST" \
   --threshold 1
 ```
 
@@ -729,7 +778,7 @@ Purpose:
 
 What this step reads:
 
-- `example/test1/list.txt`
+- `$INPUT_LIST`
 - each updated `<name>.elf.pickle`
 
 What this step writes:
@@ -751,7 +800,7 @@ order:
 
 ```bash
 python helper/extract_functype.py \
-  --input_list "example/test1/list.txt" \
+  --input_list "$INPUT_LIST" \
   --source_list "example/test1/sources.txt" \
   --ctags_dir "data/test1" \
   --threshold 1
@@ -765,7 +814,7 @@ Purpose:
 
 What this step reads:
 
-- `example/test1/list.txt`
+- `$INPUT_LIST`
 - `example/test1/sources.txt`
 - each `<name>.elf.filtered.pickle`
 
@@ -789,7 +838,7 @@ Expected tag files:
 
 ```bash
 python helper/extract_features.py \
-  --input_list "example/test1/list.txt" \
+  --input_list "$INPUT_LIST" \
   --threshold 1
 ```
 
@@ -801,7 +850,7 @@ Purpose:
 
 What this step reads:
 
-- `example/test1/list.txt`
+- `$INPUT_LIST`
 - each `<name>.elf.filtered.pickle`
 
 What this step writes:
@@ -811,6 +860,22 @@ What this step writes:
 Field added in function records:
 
 - `feature`
+
+### Validate individual post-processing stages
+
+`script/validate_tiknib_stage.py` validates the expected pickle for one stage
+and writes a retry list. Supported stages are `normalized`, `lineno`,
+`filtered`, `typed`, and `feature`. For example:
+
+```bash
+python script/validate_tiknib_stage.py \
+  --input_list "$INPUT_LIST" \
+  --stage feature \
+  --failed_list "data/test1/failures/feature.txt"
+```
+
+The validator exits nonzero when any binary fails. Retry lists and other run
+controls belong under ignored `data/` or in a parent experiment, not in Git.
 
 ### Step 7: Optional evaluation
 
@@ -824,3 +889,5 @@ to model evaluation, use `helper/test_roc.py` with one of the YAML files in
   `test1` while keeping the original `.elf`
 - `script/cleanup_tiknib_test.py test2` does the same for `test2`
 - running it without an argument cleans both `test1` and `test2`
+- when using `TIKNIB_TEST_DATASET_DIR`, pass the same exact path with
+  `--dataset-dir`; `script/test.sh` does this automatically

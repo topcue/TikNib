@@ -6,7 +6,7 @@ from pathlib import Path
 from subprocess import run, PIPE
 
 from tiknib.utils import system, get_file_type, do_multiprocess
-from config.path_variables import IDA_PATH
+from config.path_variables import IDA_PATH, IDA_POOL_SIZE, wsl_to_windows_path
 
 import logging
 import coloredlogs
@@ -14,14 +14,23 @@ import coloredlogs
 logger = logging.getLogger(__name__)
 coloredlogs.install(level=logging.INFO, logger=logger)
 
-#! Fix me
-def wsl_to_win_path(p):
-    wsl_prefix = "/home/user/win_workspace"
-    win_prefix = "C:/Users/user/workspace"
+# Backward-compatible name retained for callers outside this repository.
+def wsl_to_win_path(path):
+    return wsl_to_windows_path(path)
 
-    if p == wsl_prefix or p.startswith(wsl_prefix + "/"):
-        return win_prefix + p[len(wsl_prefix):]
-    return p
+
+def resolve_ida_executable(idapath, is_64_bit):
+    """Select the legacy or current Windows IDA console executable."""
+    suffix = "64" if is_64_bit else ""
+    candidates = [
+        os.path.join(idapath, "idal{}.exe".format(suffix)),
+        os.path.join(idapath, "idat{}.exe".format(suffix)),
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    # Keep the modern spelling in the eventual subprocess error message.
+    return candidates[-1]
 
 class IDAScript:
     def __init__(
@@ -30,6 +39,7 @@ class IDAScript:
         idc=None,
         idcargs="",
         chunk_size=1,
+        pool_size=IDA_POOL_SIZE,
         threshold=1,
         timeout=0,
         force=False,
@@ -41,6 +51,7 @@ class IDAScript:
         self.idc = idc
         self.idcargs = idcargs
         self.chunk_size = chunk_size
+        self.pool_size = pool_size
         self.threshold = threshold
         self.timeout = timeout
         self.force = force
@@ -113,17 +124,9 @@ class IDAScript:
         idc_args = " ".join(idc_args)
 
         # If we cannot get the architecture, consider it as 32-bit one.
-        if not arch or arch.find("_32") != -1:
-            ida = self.idapath + "/idal"
-        else:
-            ida = self.idapath + "/idal64"
-
-        # >= IDA Pro v7.4 use "idat" instead of "idal"
-        if not os.path.exists(ida):
-            ida = ida.replace("idal", "idat")
-
-        # For Windows IDA Pro
-        ida += ".exe"
+        ida = resolve_ida_executable(
+            self.idapath, is_64_bit=bool(arch and "_32" not in arch)
+        )
 
         # Setup command line arguments
         path = [ida, '-A', '-P+', '-S"{}"'.format(idc_args)]
@@ -180,6 +183,7 @@ class IDAScript:
             self.run_helper,
             elfs,
             chunk_size=self.chunk_size,
+            pool_size=self.pool_size,
             threshold=self.threshold,
             timeout=self.timeout,
         )

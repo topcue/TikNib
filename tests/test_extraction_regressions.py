@@ -1,12 +1,29 @@
 import ast
 import os
 import unittest
+from unittest import mock
 
+from config.path_variables import IDA_POOL_SIZE
 from tiknib.utils import decode_string_literal, parse_fname, parse_source_path
+from tiknib.idascript import IDAScript, resolve_ida_executable
 from script.handle_pickle import process_recursive
 
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+class IDAScriptTests(unittest.TestCase):
+    def test_default_pool_size_comes_from_configuration(self):
+        self.assertEqual(IDAScript().pool_size, IDA_POOL_SIZE)
+
+    def test_legacy_ida_executable_is_supported(self):
+        with mock.patch("tiknib.idascript.os.path.exists") as exists:
+            exists.side_effect = lambda path: path.endswith("idal64.exe")
+            self.assertTrue(
+                resolve_ida_executable("C:/IDA", is_64_bit=True).endswith(
+                    "idal64.exe"
+                )
+            )
 
 
 class SourcePathTests(unittest.TestCase):
@@ -48,11 +65,16 @@ class StringLiteralTests(unittest.TestCase):
         self.assertEqual(normalized, values)
 
     def test_path_normalization_still_rewrites_windows_paths(self):
-        value = r"C:\Users\user\workspace\storage\binary.elf"
-        found, normalized = process_recursive(value, replace_flag=True)
+        value = r"D:\research\workspace\storage\binary.elf"
+        with mock.patch(
+            "script.handle_pickle.WIN_PREFIX", "D:/research/workspace"
+        ), mock.patch(
+            "script.handle_pickle.WSL_PREFIX", "/wsl/workspace"
+        ):
+            found, normalized = process_recursive(value, replace_flag=True)
         self.assertEqual(found, [value])
         self.assertEqual(
-            normalized, "/home/user/win_workspace/storage/binary.elf"
+            normalized, "/wsl/workspace/storage/binary.elf"
         )
 
 
