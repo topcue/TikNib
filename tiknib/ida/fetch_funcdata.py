@@ -209,8 +209,8 @@ def main():
                     "consts": bb_consts,
                 }
             )
-        func_strings.extend(bb_strings)
-        func_consts.extend(bb_consts)
+            func_strings.extend(bb_strings)
+            func_consts.extend(bb_consts)
         func_data.append(
             {
                 "ida_idx": idx,

@@ -24,16 +24,28 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+COMPILER_PATTERN = r"gcc-[.0-9]+|clang-[.0-9]+|clang-obfus-[-a-z2]+|gcc|clang"
+ARCH_PATTERN = r"(?:x86|arm|mips|mipseb|ppceb|ppc)_(?:32|64)"
+OPTI_PATTERN = r"O0|O1|O2|O3|Os|Ofast"
+
 RE_PATTERN = (
-    "(.*)_"
-    + "(gcc-[.0-9]+|clang-[.0-9]+|"
-    + "clang-obfus-[-a-z2]+|"
-    + "gcc|clang)_"
-    + "((?:x86|arm|mips|mipseb|ppceb|ppc)_(?:32|64))_"
-    + "(O0|O1|O2|O3|Os|Ofast)_"
-    + "(.*)"
+    r"(.*)_(" + COMPILER_PATTERN + r")_(" + ARCH_PATTERN + r")_("
+    + OPTI_PATTERN + r")_(.*)"
 )
 RESTR = re.compile(RE_PATTERN)
+
+# Source paths embedded in DWARF contain the build directory followed by the
+# source-relative path.  Official BinKit adds an option suffix (for example,
+# ``_normal``), while BinForge's default builds end directly after ``_O0``.
+SOURCE_RESTR = re.compile(
+    r"(?:^|/)[^/]*_(?:"
+    + COMPILER_PATTERN
+    + r")_(?:"
+    + ARCH_PATTERN
+    + r")_(?:"
+    + OPTI_PATTERN
+    + r")(?:_[^/]*)?/(?P<src_file>.+)$"
+)
 
 # matches => package, compiler, arch, opti, bin_name
 def parse_fname(bin_path):
@@ -43,16 +55,18 @@ def parse_fname(bin_path):
 
 
 def parse_source_path(src_path):
-    matches = RESTR.search(src_path)
+    normalized_path = src_path.replace("\\", "/")
+    matches = SOURCE_RESTR.search(normalized_path)
     if not matches:
         return ""
-    src_file = matches.groups()[-1]
+    return os.path.normpath(matches.group("src_file"))
 
-    if "\\" in src_file:
-        src_file = src_file[src_file.index("\\") + 1 :]
-    else:
-        src_file = src_file[src_file.index("/") + 1 :]
-    return os.path.relpath(src_file)
+
+def decode_string_literal(value):
+    """Return IDA string-literal data as text on both Python 2 and 3."""
+    if isinstance(value, bytes):
+        return value.decode("latin-1")
+    return value
 
 
 # statistics mean function cannot handle the empty list

@@ -7,6 +7,7 @@ import sys
 
 WSL_PREFIX = "/home/user/win_workspace"
 WIN_PREFIX = "C:/Users/user/workspace"
+WINDOWS_ABS_PATH = re.compile(r"^[a-zA-Z]:[\\\\/]")
 
 
 def win_to_wsl_path(p):
@@ -40,7 +41,10 @@ def process_recursive(data, replace_flag=False):
                 data[i] = updated_item
 
     elif isinstance(data, str):
-        if re.match(r"^[a-zA-Z]:\\", data) or "\\" in data:
+        # String literals extracted from binaries commonly contain escaped
+        # characters such as ``\\n`` and ``\\r``.  Only drive-qualified
+        # absolute paths should be rewritten here.
+        if WINDOWS_ABS_PATH.match(data):
             found_paths.append(data)
             if replace_flag:
                 return found_paths, win_to_wsl_path(data)
